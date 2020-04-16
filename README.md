@@ -1,68 +1,133 @@
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+## antd使用问题记录 包括v3和v4版本
 
-## Available Scripts
+### Table
 
-In the project directory, you can run:
+##### 1. virtualizedtableforantd (v3)
 
-### `npm start`
+用于不分页的长表格优化
+* https://www.jianshu.com/p/fdf127f2967c
+* https://www.npmjs.com/package/virtualizedtableforantd
 
-Runs the app in the development mode.<br />
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+### Select
 
-The page will reload if you make edits.<br />
-You will also see any lint errors in the console.
+#### 1. filterOption (v3)
+ ==如果不设置filterOption={false}会导致==：即使拿到了最新的数据还是依旧显示无匹配结果 https://www.cnblogs.com/soyxiaobi/p/9984491.html
+ 
+ ### Form
+ 
+ #### 校验规则 (v3)
+antd的校验规则是基于 [ async-validator](https://github.com/yiminghe/async-validator)
 
-### `npm test`
+所以完整的API文档应该看async-validator。
 
-Launches the test runner in the interactive watch mode.<br />
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+当表单需要跟后端请求来做校验时，应该使用asyncValidator
+```
+// 样例
+const fields = {
+  asyncField: {
+    asyncValidator(rule, value, callback) {
+      ajax({
+        url: 'xx',
+        value: value
+      }).then(function(data) {
+        callback();
+      }, function(error) {
+        callback(new Error(error))
+      });
+    }
+  },
 
-### `npm run build`
+  promiseField: {
+    asyncValidator(rule, value) {
+      return ajax({
+        url: 'xx',
+        value: value
+      });
+    }
+  }
+};
+```
 
-Builds the app for production to the `build` folder.<br />
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Upload 
 
-The build is minified and the filenames include the hashes.<br />
-Your app is ready to be deployed!
+#### 自定义Upload上传逻辑和展示 (v4)
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+涉及到的属性
+- customRequest 通过覆盖默认的上传行为，可以自定义自己的上传实现
+- onChange
 
-### `npm run eject`
+用到的依赖库
+- axios
+- antd v4
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+上传接口用的是antd的Upload示例提供的接口地址
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+##### 组件Dom结构
+> 思路
+> 1. 首先使用antd提供的默认上传组件
+> 2. 通过样式控制，隐藏ant-upload-list，然后通过fileList，获取已加载的图片的base64信息，即thumbUrl的值，通过一个img标签进行展示
+> 3. 展示了待上传图片后，接下来是就处理customRequest，通过axios的onUploadProgress配置，可以获取上传进度，将上传进度更新到Progress进行展示
+> 4. 如果要终止Upload的上传，是通过终止axios来实现的，用到axios.CancelToken。[参考文章“Axios取消请求CancelToken”](https://juejin.im/post/5d664634f265da03d42fb6dc)；当然如果使用其他的xhr库，基本也都有提供abort操作
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+```
+<UploadStyled {...props}>
+    <ProgressWrapper
+      showProgress={showProgress}
+      onClick={(e) => {
+        e.stopPropagation();
+      }}
+    >
+      <Progress percent={_.round(uploadProgress)} />
+      <DeleteOutlined
+        onClick={(e) => {
+          e.stopPropagation();
+          this.cancelAxios();
+          this.setState({
+            uploadProgress: 0,
+            fileList: [],
+            showProgress: false,
+          });
+        }}
+      />
+    </ProgressWrapper>
+    
+    {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
+    <img
+      style={{ width: '100%' }}
+      onClick={(e) => {
+        e.stopPropagation();
+      }}
+      alt=""
+      src={thumbUrl}
+    />
+    <Button style={{ display: _.isEmpty(fileList) ? 'inline-block' : 'none' }}>
+      <UploadOutlined /> Click to Upload
+    </Button>
+</UploadStyled>
+```
 
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/code-splitting
-
-### Analyzing the Bundle Size
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size
-
-### Making a Progressive Web App
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app
-
-### Advanced Configuration
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/advanced-configuration
-
-### Deployment
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/deployment
-
-### `npm run build` fails to minify
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify
+Upload的customRequest属性
+```
+customRequest: (option) => {
+    const formData = new FormData();
+    formData.append('files[]', option.file);
+    const context = this;
+    axios
+      .post('https://www.mocky.io/v2/5cc8019d300000980a055e76', formData, {
+        onUploadProgress: (progressEvent) => {
+          const uploadProgress = (progressEvent.loaded / progressEvent.total) * 100;
+          // console.log(uploadProgress);
+          context.setState({ uploadProgress, showProgress: true });
+        },
+        cancelToken: new this.CancelToken(function executor(c) {
+          context.cancelAxios = c;
+        }),
+      })
+      .then((res) => {
+        console.log(res);
+        const { data } = res;
+        context.setState({ fileList: [data], showProgress: false });
+      });
+},
+```
